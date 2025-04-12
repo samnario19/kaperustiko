@@ -286,65 +286,77 @@
 		isReceiptPopupVisible = true; // Show the receipt popup
 	}
 
-	function printReceipt() {
-		const receiptData = {
-			receiptNumber: orderNumber,
-			date: new Date().toLocaleDateString(),
-			time: new Date().toLocaleTimeString(),
-			cashierName: cashierName,
-			itemsOrdered: orderedItems,
-			totalAmount: totalOrderedItemsPrice,
-			amountPaid: parseFloat(payment) || 0,
-			change: Math.max(0, parseFloat((parseFloat(payment) - totalOrderedItemsPrice).toFixed(2))),
-			order_take: isTakeOut ? 'Take Out' : 'Dine In',
-			table_number: selectedCard.table // Use selectedCard to get the table number
-		};
+	async function printReceipt() {
+		try {
+			// First send data to thermal printer
+			const thermalData = {
+				cashierName: cashierName,
+				orderNumber: orderNumber,
+				totalOrderedItemsPrice: totalOrderedItemsPrice,
+				voucherDiscount: voucherDiscount,
+				payment: parseFloat(payment),
+				orderedItems: orderedItems
+			};
 
-		// Log the data to check for issues
-		console.log('Receipt Data:', JSON.stringify(receiptData, null, 2));
+			// Print to thermal printer
+			const thermalResponse = await fetch('http://localhost/kaperustiko-possystem/src/routes/thermal_printer.php', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(thermalData)
+			});
 
-		fetch('http://localhost/kaperustiko-possystem/backend/modules/insert.php?action=insertReceipt', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify(receiptData)
-		})
-		.then(response => {
-			console.log('Response Status:', response.status); // Log the response status
-			return response.json();
-		})
-		.then(data => {
-			console.log('Response Data:', data); // Log the response data
+			if (!thermalResponse.ok) {
+				throw new Error('Failed to print to thermal printer');
+			}
+
+			// Then proceed with saving receipt data
+			const receiptData = {
+				receiptNumber: orderNumber,
+				date: new Date().toLocaleDateString(),
+				time: new Date().toLocaleTimeString(),
+				cashierName: cashierName,
+				itemsOrdered: orderedItems,
+				totalAmount: totalOrderedItemsPrice,
+				amountPaid: parseFloat(payment) || 0,
+				change: Math.max(0, parseFloat((parseFloat(payment) - totalOrderedItemsPrice).toFixed(2))),
+				order_take: isTakeOut ? 'Take Out' : 'Dine In',
+				table_number: selectedCard.table
+			};
+
+			const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/insert.php?action=insertReceipt', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(receiptData)
+			});
+
+			const data = await response.json();
 			if (data.error) {
-				showAlert(data.error, 'error');
-			} else {
-				showAlert(data.message, 'success');
-				isReceiptPopupVisible = false; // Close the receipt popup
+				throw new Error(data.error);
+			}
 
-				// Call the delete API after successful receipt printing
-				return fetch(`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteTableOccupancy&table_number=${selectedCard.table}`, {
-					method: 'DELETE'
-				});
-			}
-		})
-		.then(deleteResponse => {
-			if (deleteResponse) {
-				return deleteResponse.json();
-			}
-		})
-		.then(deleteData => {
-			if (deleteData && deleteData.success) {
-				console.log('Table data deleted successfully.');
-				window.location.reload(); // Reload the window on success
-			} else {
+			showAlert('Receipt printed and saved successfully!', 'success');
+			isReceiptPopupVisible = false;
+
+			// Delete table occupancy
+			const deleteResponse = await fetch(
+				`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteTableOccupancy&table_number=${selectedCard.table}`,
+				{ method: 'DELETE' }
+			);
+
+			const deleteData = await deleteResponse.json();
+			if (!deleteData.success) {
 				console.error('Failed to delete table data:', deleteData.message);
 			}
-		})
-		.catch(error => {
+
+			window.location.reload();
+		} catch (error: any) {
 			console.error('Error:', error);
-			showAlert('Failed to save receipt.', 'error');
-		});
+			showAlert(error.message || 'Failed to process receipt.', 'error');
+		}
 	}
 
 	function openReceiptPopup() {
@@ -505,6 +517,60 @@
 				isDineIn,
 				isTakeOut
 			);
+		}
+	}
+
+	async function testThermalPrint() {
+		try {
+			const testData = {
+				cashierName: "Test Cashier",
+				orderNumber: "TEST-" + Math.floor(Math.random() * 1000),
+				totalOrderedItemsPrice: 299.00,
+				voucherDiscount: 0,
+				payment: 300.00,
+				orderedItems: [
+					{
+						order_name: "Test Coffee",
+						order_quantity: 1,
+						basePrice: 199.00,
+						order_addons: "Extra Shot",
+						order_addons_price: 100.00
+					}
+				]
+			};
+
+			console.log('Sending test print data:', testData);
+
+			const response = await fetch('http://localhost/kaperustiko-possystem/src/routes/thermal_printer.php', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(testData)
+			});
+			
+			console.log('Response status:', response.status);
+			const responseText = await response.text();
+			console.log('Raw response:', responseText);
+
+			let result;
+			try {
+				result = JSON.parse(responseText);
+			} catch (e) {
+				console.error('Failed to parse JSON response:', e);
+				alert('Error: Invalid response from server. Check console for details.');
+				return;
+			}
+			
+			if (result.success) {
+				alert('Test receipt printed successfully!');
+			} else {
+				alert('Failed to print test receipt: ' + (result.message || 'Unknown error'));
+			}
+		} catch (error: unknown) {
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+			console.error('Print error:', error);
+			alert('Error printing test receipt: ' + errorMessage);
 		}
 	}
 </script>
@@ -793,9 +859,7 @@
 					/>
 				</div>
 				
-				<div class="grid grid-cols-2 gap-4">
-				
-					
+				<div class="grid grid-cols-1 gap-4">
 					<button
 						on:click={() => {
 							// Place Order functionality
@@ -821,7 +885,7 @@
 								};
 							});
 						}}
-						class="rounded py-3 font-bold text-white bg-blue-600 hover:bg-blue-700 col-span-2"
+						class="rounded py-3 font-bold text-white bg-blue-600 hover:bg-blue-700 w-full"
 					>
 						Checkout Bill
 					</button>
@@ -929,7 +993,7 @@
 
 {#if isReceiptPopupVisible}
 	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
-		<div class="rounded-lg bg-white p-8 shadow-lg max-w-lg w-full">
+		<div class="rounded-lg bg-white p-8 shadow-lg max-w-lg w-full receipt-container">
 			<div class="mb-4 flex justify-center">
 				<img src="icon.png" alt="Restaurant Logo" class="h-24" />
 			</div>
@@ -1044,7 +1108,7 @@
 			</div>
 
 			<div class="mt-4 flex justify-center space-x-4">
-				<button on:click={printReceipt} class="rounded-md bg-blue-500 px-4 py-2 text-white transition hover:bg-blue-600">Checkout Bill</button>
+				<button on:click={printReceipt} class="rounded-md bg-blue-500 px-4 py-2 text-white transition hover:bg-blue-600">Print & Save</button>
 				<button on:click={() => isReceiptPopupVisible = false} class="rounded-md bg-red-500 px-4 py-2 text-white transition hover:bg-red-600">Cancel</button>
 			</div>
 			<p class="text-center mt-4 text-sm text-gray-600">Thank you for having your meal with us!</p>

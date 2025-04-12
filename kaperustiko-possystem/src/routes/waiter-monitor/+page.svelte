@@ -1833,6 +1833,50 @@
 	</div>
 {/if}
 
+<!-- Add test print button for thermal printer 2 -->
+<button 
+    on:click={async () => {
+        try {
+            const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/thermal_printer2.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    testPrint: true,
+                    cashierName: cashierName,
+                    orderNumber: 'TEST',
+                    orderedItems: [{
+                        order_name: 'Test Item',
+                        order_quantity: 1,
+                        basePrice: 100.00,
+                        order_addons: 'None',
+                        order_addons_price: 0
+                    }],
+                    totalOrderedItemsPrice: 100.00,
+                    voucherDiscount: 0,
+                    payment: 100.00
+                })
+            });
+            
+            const result = await response.json();
+            if (result.success) {
+                showAlert('Test print successful', 'success');
+            } else {
+                showAlert('Test print failed: ' + result.message, 'error');
+            }
+        } catch (error) {
+            console.error('Error testing printer:', error);
+            showAlert('Error testing printer', 'error');
+        }
+    }}
+    class="fixed bottom-4 right-4 z-50 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg text-lg flex items-center gap-2"
+>
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+    </svg>
+    Test Print Thermal 2
+</button>
 
 {#if isSleepActive}
 	<button class="bg-cyan-950 h-screen w-full flex flex-col items-center justify-center z-50 fixed inset-0" on:click={() => isSleepActive = false} aria-label="Close Sleep Overlay">
